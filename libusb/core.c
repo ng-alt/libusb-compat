@@ -773,6 +773,30 @@ API_EXPORTED int usb_bulk_read(usb_dev_handle *dev, int ep, char *bytes,
 	return usb_bulk_io(dev, ep, bytes, size, timeout);
 }
 
+API_EXPORTED int usb_bulk_write_sp(usb_dev_handle *dev, int ep, char *bytes, int size,
+	int timeout, int *actual_length, int max_rw)
+{
+	if (ep & USB_ENDPOINT_IN) {
+		/* libusb-0.1 on BSD strangely fix up a write request to endpoint
+		 * 0x81 to be to endpoint 0x01. do the same thing here, but
+		 * warn about this silly behaviour. */
+		usbi_warn("endpoint %x has excessive IN direction bit, fixing");
+		ep &= ~USB_ENDPOINT_IN;
+	}
+
+	int r;
+	usbi_dbg("endpoint %x size %d timeout %d", ep, size, timeout);
+	r = libusb_bulk_transfer(dev->handle, ep & 0xff, bytes, size,
+		actual_length, timeout);
+	
+	/* if we timed out but did transfer some data, report as successful short
+	 * read. FIXME: is this how libusb-0.1 works? */
+	if (r == 0 || (r == LIBUSB_ERROR_TIMEOUT && actual_length > 0))
+		return actual_length;
+
+	return compat_err(r);
+}
+
 API_EXPORTED int usb_bulk_write(usb_dev_handle *dev, int ep, char *bytes,
 	int size, int timeout)
 {
